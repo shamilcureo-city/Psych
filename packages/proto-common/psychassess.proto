@@ -1,0 +1,185 @@
+syntax = "proto3";
+
+package psychassess;
+
+// ─── Assessment Service RPCs ───────────────────────────────────
+service PsychAssessService {
+  // Initialize assessment session for client
+  rpc StartAssessment (StartAssessmentRequest) returns (StartAssessmentResponse);
+
+  // Submit individual question response
+  rpc SubmitResponse (SubmitResponseRequest) returns (SubmitResponseResponse);
+
+  // Finalize and score assessment
+  rpc CompleteAssessment (CompleteAssessmentRequest) returns (AssessmentResultResponse);
+
+  // Fetch scored results + interpretation
+  rpc GetAssessmentResult (GetAssessmentResultRequest) returns (AssessmentResultResponse);
+
+  // Longitudinal scores for dashboard
+  rpc GetClientHistory (GetClientHistoryRequest) returns (ClientHistoryResponse);
+
+  // Initialize Gemini voice session metadata (Phase 2)
+  rpc StartVoiceSession (StartVoiceSessionRequest) returns (VoiceSessionResponse);
+
+  // Save session transcript and notes (Phase 2)
+  rpc EndVoiceSession (EndVoiceSessionRequest) returns (VoiceSessionResponse);
+
+  // Fetch scores for client profile
+  rpc GetScoreSummary (GetScoreSummaryRequest) returns (ScoreSummaryResponse);
+}
+
+// ─── Crisis Service RPCs ───────────────────────────────────────
+service CrisisService {
+  // Internal crisis escalation
+  rpc FlagCrisis (FlagCrisisRequest) returns (CrisisResponse);
+}
+
+// ─── Messages ──────────────────────────────────────────────────
+
+message StartAssessmentRequest {
+  string client_id = 1;
+  string tool_type = 2; // PHQ9, GAD7, DASS21, etc.
+}
+
+message StartAssessmentResponse {
+  string session_id = 1;
+  string tool_type = 2;
+  string tool_name = 3;
+  int32 total_questions = 4;
+  repeated Question questions = 5;
+}
+
+message Question {
+  string id = 1;
+  int32 index = 2;
+  string text = 3;
+  repeated ResponseOption options = 4;
+  string subscale = 5;
+}
+
+message ResponseOption {
+  int32 value = 1;
+  string label = 2;
+}
+
+message SubmitResponseRequest {
+  string session_id = 1;
+  string question_id = 2;
+  int32 response_value = 3;
+  string response_text = 4;
+}
+
+message SubmitResponseResponse {
+  string response_id = 1;
+  string question_id = 2;
+  int32 answered_count = 3;
+  int32 total_questions = 4;
+  bool is_complete = 5;
+}
+
+message CompleteAssessmentRequest {
+  string session_id = 1;
+}
+
+message GetAssessmentResultRequest {
+  string session_id = 1;
+}
+
+message AssessmentResultResponse {
+  string result_id = 1;
+  string tool_type = 2;
+  int32 total_score = 3;
+  int32 max_possible_score = 4;
+  string severity_band = 5;
+  string severity_label = 6;
+  string clinical_interpretation = 7;
+  string plain_language_interpretation = 8;
+  string recommendation = 9;
+  string risk_level = 10;
+  repeated CrisisFlag crisis_flags = 11;
+  repeated string adaptive_suggestions = 12;
+}
+
+message CrisisFlag {
+  string question_id = 1;
+  int32 score = 2;
+  string action = 3;
+}
+
+message GetClientHistoryRequest {
+  string client_id = 1;
+  string tool_type = 2; // Optional filter
+}
+
+message ClientHistoryResponse {
+  repeated ScoreEntry entries = 1;
+}
+
+message ScoreEntry {
+  string id = 1;
+  string tool_type = 2;
+  int32 score = 3;
+  string severity_band = 4;
+  string assessed_at = 5;
+}
+
+message StartVoiceSessionRequest {
+  string client_id = 1;
+  string session_type = 2;
+  string framework = 3;
+}
+
+message EndVoiceSessionRequest {
+  string session_id = 1;
+  string transcript_ref = 2;
+  string notes_ref = 3;
+  bool crisis_flag = 4;
+  int32 duration_sec = 5;
+}
+
+message VoiceSessionResponse {
+  string session_id = 1;
+  string status = 2;
+}
+
+message GetScoreSummaryRequest {
+  string client_id = 1;
+}
+
+message ScoreSummaryResponse {
+  repeated LatestScore scores = 1;
+  int32 total_sessions = 2;
+  int32 active_crisis_events = 3;
+}
+
+message LatestScore {
+  string tool_type = 1;
+  int32 score = 2;
+  string severity_band = 3;
+  string assessed_at = 4;
+}
+
+message FlagCrisisRequest {
+  string client_id = 1;
+  string session_id = 2;
+  string flag_type = 3;
+  string severity = 4;
+  string description = 5;
+}
+
+message CrisisResponse {
+  string crisis_event_id = 1;
+  string flag_type = 2;
+  string severity = 3;
+  repeated CrisisResource resources = 4;
+  string message = 5;
+}
+
+message CrisisResource {
+  string name = 1;
+  string phone = 2;
+  string availability = 3;
+  string whatsapp = 4;
+  string region = 5;
+}

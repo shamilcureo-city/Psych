@@ -1,0 +1,159 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Assessment Session ────────────────────────────────────────
+model AssessmentSession {
+  id            String              @id @default(uuid())
+  clientId      String
+  toolType      String              // PHQ9, GAD7, DASS21, etc.
+  status        String              @default("IN_PROGRESS") // NOT_STARTED, IN_PROGRESS, COMPLETED, ABANDONED
+  adaptivePath  String[]            @default([]) // Ordered list of tool types in adaptive flow
+  startedAt     DateTime            @default(now())
+  completedAt   DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  responses     AssessmentResponse[]
+  result        AssessmentResult?
+
+  @@index([clientId])
+  @@index([clientId, toolType])
+  @@index([status])
+}
+
+// ─── Assessment Response (individual question answer) ──────────
+model AssessmentResponse {
+  id            String   @id @default(uuid())
+  sessionId     String
+  questionId    String
+  questionText  String
+  responseValue Int
+  responseText  String
+  scoredValue   Int
+  answeredAt    DateTime @default(now())
+
+  session       AssessmentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, questionId])
+  @@index([sessionId])
+}
+
+// ─── Assessment Result (scored output) ─────────────────────────
+model AssessmentResult {
+  id                         String   @id @default(uuid())
+  sessionId                  String   @unique
+  clientId                   String
+  toolType                   String
+  totalScore                 Int
+  maxPossibleScore           Int
+  subscaleScores             Json?    // { depression: { score: 14, band: "MODERATE" }, ... }
+  severityBand               String
+  severityLabel              String
+  clinicalInterpretation     String
+  plainLanguageInterpretation String
+  recommendation             String
+  riskLevel                  String   @default("NONE") // NONE, LOW, MODERATE, HIGH, CRISIS
+  crisisFlags                Json?    // [{ questionId, score, action }]
+  adaptiveSuggestions        String[] @default([])
+  createdAt                  DateTime @default(now())
+
+  session  AssessmentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([clientId, toolType])
+  @@index([riskLevel])
+}
+
+// ─── Voice Counseling Session ──────────────────────────────────
+model VoiceSession {
+  id             String        @id @default(uuid())
+  clientId       String
+  sessionType    String        // PSYCHOEDUCATION, CBT_CHECKIN, etc.
+  framework      String        // CBT, ACT, MBSR, etc.
+  startedAt      DateTime      @default(now())
+  endedAt        DateTime?
+  durationSec    Int?
+  transcriptRef  String?       // S3 key
+  notesRef       String?       // S3 key
+  crisisFlag     Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  crisisEvents   CrisisEvent[]
+
+  @@index([clientId])
+}
+
+// ─── Crisis Event ──────────────────────────────────────────────
+model CrisisEvent {
+  id             String    @id @default(uuid())
+  clientId       String
+  sessionId      String?   // Can be from assessment or voice session
+  voiceSessionId String?
+  flagType       String    // PHQ9_Q9, VERBAL_DISTRESS, SELF_HARM_KEYWORD, CLINICIAN_FLAGGED
+  severity       String    // LOW, MODERATE, HIGH, CRISIS
+  description    String?
+  triggeredAt    DateTime  @default(now())
+  resolvedAt     DateTime?
+  resolvedBy     String?
+  safetyPlanRef  String?   // S3 key
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  voiceSession   VoiceSession? @relation(fields: [voiceSessionId], references: [id])
+
+  @@index([clientId])
+  @@index([severity])
+  @@index([triggeredAt])
+}
+
+// ─── Mood Log ──────────────────────────────────────────────────
+model MoodLog {
+  id        String   @id @default(uuid())
+  clientId  String
+  logDate   DateTime @default(now())
+  moodScore Int      // 1–5
+  note      String?
+  tags      String[] @default([])
+  createdAt DateTime @default(now())
+
+  @@index([clientId])
+  @@index([clientId, logDate])
+}
+
+// ─── Journal Entry ─────────────────────────────────────────────
+model JournalEntry {
+  id         String   @id @default(uuid())
+  clientId   String
+  entryDate  DateTime @default(now())
+  content    String   // Encrypted at application level
+  promptUsed String?
+  sentiment  String?  // AI-detected sentiment
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([clientId])
+  @@index([clientId, entryDate])
+}
+
+// ─── Client Score History (longitudinal tracking) ──────────────
+model ClientScoreHistory {
+  id           String   @id @default(uuid())
+  clientId     String
+  toolType     String
+  score        Int
+  severityBand String
+  assessedAt   DateTime @default(now())
+  sessionId    String?
+  createdAt    DateTime @default(now())
+
+  @@index([clientId])
+  @@index([clientId, toolType])
+  @@index([clientId, toolType, assessedAt])
+}
