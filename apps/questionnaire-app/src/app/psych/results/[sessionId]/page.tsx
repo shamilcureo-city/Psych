@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
@@ -15,31 +15,78 @@ import {
   NON_DIAGNOSTIC_DISCLAIMER,
   RiskLevel,
   ScoredResult,
+  SeverityBand,
 } from '@psychassess/shared';
-import { getResult } from '@/lib/api';
+import { getResult, type AssessmentResultResponse } from '@/lib/api';
 
-// Simple client-side scoring for demo mode
-function scoreLocally(toolType: AssessmentToolType, responses: Record<string, { value: number }>): any {
+// Client-side scoring for demo mode using actual clinical thresholds
+function scoreLocally(
+  toolType: AssessmentToolType,
+  responses: Record<string, { value: number }>,
+): ScoredResult {
   const tool = ASSESSMENT_TOOLS[toolType];
-  const totalScore = tool.questions.reduce(
-    (sum, q) => sum + (responses[q.id]?.value ?? 0),
+  const rawScore = tool.questions.reduce(
+    (sum: number, q: { id: string }) => sum + (responses[q.id]?.value ?? 0),
     0,
   );
 
   // For WHO-5, multiply raw by 4
-  const adjustedScore = toolType === AssessmentToolType.WHO5 ? totalScore * 4 : totalScore;
+  const totalScore = toolType === AssessmentToolType.WHO5 ? rawScore * 4 : rawScore;
 
+  // For DASS-21, handle subscales
+  if (toolType === AssessmentToolType.DASS21 && tool.subscales) {
+    const subscaleScores: Record<string, { score: number; severityBand: SeverityBand; label: string }> = {};
+    for (const subscale of tool.subscales) {
+      const subRaw = subscale.questionIds.reduce(
+        (sum: number, qId: string) => sum + (responses[qId]?.value ?? 0),
+        0,
+      );
+      const subScore = subRaw * (subscale.multiplier ?? 1);
+      const subThreshold = subscale.severityThresholds.find(
+        (t: { min: number; max: number }) => subScore >= t.min && subScore <= t.max,
+      );
+      subscaleScores[subscale.name.toLowerCase()] = {
+        score: subScore,
+        severityBand: subThreshold?.band ?? SeverityBand.NORMAL,
+        label: subThreshold?.label ?? 'Normal',
+      };
+    }
+
+    const worstBand = Object.values(subscaleScores).reduce(
+      (worst, s) => {
+        const order = [SeverityBand.NORMAL, SeverityBand.MILD, SeverityBand.MODERATE, SeverityBand.SEVERE, SeverityBand.EXTREMELY_SEVERE];
+        return order.indexOf(s.severityBand) > order.indexOf(worst) ? s.severityBand : worst;
+      },
+      SeverityBand.NORMAL,
+    );
+
+    return {
+      toolType,
+      totalScore,
+      maxPossibleScore: tool.scoreRange.max,
+      severityBand: worstBand,
+      severityLabel: Object.values(subscaleScores).find((s) => s.severityBand === worstBand)?.label ?? 'Normal',
+      clinicalInterpretation: `DASS-21 subscale analysis: ${Object.entries(subscaleScores).map(([n, d]) => `${n}: ${d.label}`).join(', ')}`,
+      plainLanguageInterpretation: 'Your DASS-21 results have been scored. See subscale details below.',
+      recommendation: worstBand === SeverityBand.NORMAL
+        ? 'No intervention needed. Maintain current wellbeing practices.'
+        : 'Consider speaking with a mental health professional.',
+      riskLevel: worstBand === SeverityBand.EXTREMELY_SEVERE ? RiskLevel.HIGH
+        : worstBand === SeverityBand.SEVERE ? RiskLevel.MODERATE
+        : RiskLevel.NONE,
+      subscaleScores,
+    };
+  }
+
+  // Use actual severity thresholds from the tool definition
   const threshold = tool.severityThresholds.find(
-    (t) => adjustedScore >= t.min && adjustedScore <= t.max,
+    (t: { min: number; max: number }) => totalScore >= t.min && totalScore <= t.max,
   );
 
+  // Check crisis items
+  const crisisFlags: { questionId: string; score: number; action: string }[] = [];
   let riskLevel = RiskLevel.NONE;
-  if (adjustedScore >= tool.scoreRange.max * 0.75) riskLevel = RiskLevel.HIGH;
-  else if (adjustedScore >= tool.scoreRange.max * 0.5) riskLevel = RiskLevel.MODERATE;
-  else if (adjustedScore >= tool.scoreRange.max * 0.25) riskLevel = RiskLevel.LOW;
 
-  // Check crisis
-  const crisisFlags: any[] = [];
   if (tool.crisisItems) {
     for (const ci of tool.crisisItems) {
       const val = responses[ci.questionId]?.value ?? 0;
@@ -50,28 +97,51 @@ function scoreLocally(toolType: AssessmentToolType, responses: Record<string, { 
     }
   }
 
+  // Determine risk from score if no crisis
+  if (riskLevel === RiskLevel.NONE) {
+    // WHO-5: lower is worse (inverted)
+    if (toolType === AssessmentToolType.WHO5) {
+      if (totalScore <= 28) riskLevel = RiskLevel.MODERATE;
+      else if (totalScore < 52) riskLevel = RiskLevel.LOW;
+    } else {
+      // Standard tools: higher is worse
+      const ratio = totalScore / tool.scoreRange.max;
+      if (ratio >= 0.75) riskLevel = RiskLevel.HIGH;
+      else if (ratio >= 0.5) riskLevel = RiskLevel.MODERATE;
+      else if (ratio >= 0.25) riskLevel = RiskLevel.LOW;
+    }
+  }
+
+  // Adaptive suggestions
+  const adaptiveSuggestions: AssessmentToolType[] = [];
+  if (tool.adaptiveTriggers) {
+    for (const trigger of tool.adaptiveTriggers) {
+      adaptiveSuggestions.push(trigger.triggeredTool);
+    }
+  }
+
   return {
     toolType,
-    totalScore: adjustedScore,
+    totalScore,
     maxPossibleScore: tool.scoreRange.max,
-    severityBand: threshold?.band || 'UNKNOWN',
-    severityLabel: threshold?.label || 'Unknown',
-    clinicalInterpretation: threshold?.clinicalInterpretation || '',
-    plainLanguageInterpretation: threshold?.clinicalInterpretation || '',
-    recommendation: threshold?.recommendation || '',
+    severityBand: threshold?.band ?? SeverityBand.NORMAL,
+    severityLabel: threshold?.label ?? 'Unknown',
+    clinicalInterpretation: threshold?.clinicalInterpretation ?? '',
+    plainLanguageInterpretation: threshold?.clinicalInterpretation ?? '',
+    recommendation: threshold?.recommendation ?? '',
     riskLevel,
     crisisFlags: crisisFlags.length > 0 ? crisisFlags : undefined,
+    adaptiveSuggestions: adaptiveSuggestions.length > 0 ? adaptiveSuggestions : undefined,
   };
 }
 
 export default function ResultsPage() {
   const params = useParams();
   const sessionId = params.sessionId as string;
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<ScoredResult | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Try to fetch from backend
     getResult(sessionId)
       .then(setResult)
       .catch(() => {
@@ -88,8 +158,18 @@ export default function ResultsPage() {
 
   if (loading) {
     return (
-      <div className="max-w-2xl mx-auto flex items-center justify-center py-20">
-        <p className="text-muted-foreground">Loading results...</p>
+      <div className="max-w-2xl mx-auto space-y-6">
+        <Card>
+          <CardHeader>
+            <div className="h-6 w-48 bg-secondary rounded animate-pulse" />
+            <div className="h-4 w-64 bg-secondary rounded animate-pulse mt-2" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="h-8 w-24 bg-secondary rounded animate-pulse" />
+            <div className="h-4 w-full bg-secondary rounded animate-pulse" />
+            <div className="h-4 w-3/4 bg-secondary rounded animate-pulse" />
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -193,7 +273,14 @@ export default function ResultsPage() {
               <span>0</span>
               <span>{result.maxPossibleScore}</span>
             </div>
-            <div className="h-4 bg-secondary rounded-full overflow-hidden">
+            <div
+              className="h-4 bg-secondary rounded-full overflow-hidden"
+              role="progressbar"
+              aria-valuenow={result.totalScore}
+              aria-valuemin={0}
+              aria-valuemax={result.maxPossibleScore}
+              aria-label={`Score: ${result.totalScore} out of ${result.maxPossibleScore}`}
+            >
               <div
                 className="h-full rounded-full transition-all"
                 style={{
@@ -208,20 +295,20 @@ export default function ResultsPage() {
           {result.subscaleScores && (
             <div className="space-y-2 pt-2">
               <h4 className="text-sm font-medium">Subscale Scores</h4>
-              {Object.entries(result.subscaleScores).map(([name, data]: [string, any]) => (
+              {Object.entries(result.subscaleScores).map(([name, data]) => (
                 <div key={name} className="flex items-center justify-between text-sm">
                   <span className="capitalize">{name}</span>
                   <div className="flex items-center gap-2">
-                    <span className="font-medium">{data.score}</span>
+                    <span className="font-medium">{(data as { score: number; severityBand: string; label: string }).score}</span>
                     <Badge
                       variant="outline"
                       style={{
-                        backgroundColor: getSeverityColor(data.severityBand) + '20',
-                        color: getSeverityColor(data.severityBand),
+                        backgroundColor: getSeverityColor((data as { severityBand: string }).severityBand) + '20',
+                        color: getSeverityColor((data as { severityBand: string }).severityBand),
                         fontSize: '0.7rem',
                       }}
                     >
-                      {data.label}
+                      {(data as { label: string }).label}
                     </Badge>
                   </div>
                 </div>
@@ -256,6 +343,36 @@ export default function ResultsPage() {
           </details>
         </CardContent>
       </Card>
+
+      {/* Adaptive Suggestions */}
+      {result.adaptiveSuggestions && result.adaptiveSuggestions.length > 0 && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardHeader>
+            <CardTitle className="text-lg">Recommended Follow-up</CardTitle>
+            <CardDescription>
+              Based on your responses, we recommend the following additional assessments.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {result.adaptiveSuggestions.map((suggestedTool) => {
+                const suggested = ASSESSMENT_TOOLS[suggestedTool];
+                return (
+                  <div key={suggestedTool} className="flex items-center justify-between p-3 rounded-lg border bg-white">
+                    <div>
+                      <p className="font-medium text-sm">{suggested?.name || suggestedTool}</p>
+                      <p className="text-xs text-muted-foreground">{suggested?.description}</p>
+                    </div>
+                    <Link href={`/psych/assess/${suggestedTool}`}>
+                      <Button size="sm">Start</Button>
+                    </Link>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Non-diagnostic disclaimer */}
       <Alert variant="info">

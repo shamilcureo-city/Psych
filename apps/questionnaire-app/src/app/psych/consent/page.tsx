@@ -49,9 +49,10 @@ export default function ConsentPage() {
               type="checkbox"
               checked={accepted}
               onChange={(e) => setAccepted(e.target.checked)}
-              className="mt-1 h-4 w-4 rounded border-gray-300"
+              className="mt-1 h-4 w-4 rounded border-gray-300 focus-visible:ring-2 focus-visible:ring-primary"
+              aria-describedby="consent-description"
             />
-            <span className="text-sm">
+            <span id="consent-description" className="text-sm">
               I have read and understood the above information. I understand that
               this is a screening tool and not a diagnostic service. I consent to
               my responses being stored securely for generating results and

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,6 @@ import {
   ASSESSMENT_TOOLS,
   AssessmentToolType,
   CRISIS_RESOURCES_INDIA,
-  CRISIS_THRESHOLDS,
 } from '@psychassess/shared';
 import { startAssessment, submitResponse, completeAssessment } from '@/lib/api';
 
@@ -31,8 +30,8 @@ export default function AssessPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showCrisis, setShowCrisis] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDemo, setIsDemo] = useState(false);
 
-  // For demo mode without backend
   const clientId = typeof window !== 'undefined'
     ? localStorage.getItem('psychassess_client_id') || 'demo-client'
     : 'demo-client';
@@ -42,8 +41,8 @@ export default function AssessPage() {
     startAssessment(clientId, toolType)
       .then((res) => setSessionId(res.sessionId))
       .catch(() => {
-        // Backend not running — continue in offline/demo mode
         setSessionId('demo-session');
+        setIsDemo(true);
       });
   }, [toolType, clientId]);
 
@@ -72,12 +71,14 @@ export default function AssessPage() {
       [questionId]: { value, text },
     }));
 
-    // Check for crisis item in real-time
-    if (
-      questionId === CRISIS_THRESHOLDS.PHQ9_Q9_QUESTION_ID &&
-      value >= CRISIS_THRESHOLDS.PHQ9_Q9_THRESHOLD
-    ) {
-      setShowCrisis(true);
+    // Check for crisis item in real-time — generic for any tool
+    if (tool.crisisItems) {
+      for (const crisisItem of tool.crisisItems) {
+        if (questionId === crisisItem.questionId && value >= crisisItem.threshold) {
+          setShowCrisis(true);
+          break;
+        }
+      }
     }
 
     // Submit to backend if available
@@ -109,7 +110,7 @@ export default function AssessPage() {
 
     try {
       if (sessionId && sessionId !== 'demo-session') {
-        const result = await completeAssessment(sessionId);
+        await completeAssessment(sessionId);
         router.push(`/psych/results/${sessionId}`);
       } else {
         // Demo mode: store responses locally and navigate
@@ -120,8 +121,9 @@ export default function AssessPage() {
         );
         router.push(`/psych/results/${demoId}`);
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to complete assessment');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to complete assessment';
+      setError(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -141,8 +143,26 @@ export default function AssessPage() {
           </Badge>
         </div>
         <p className="text-sm text-muted-foreground">{tool.fullName}</p>
-        <Progress value={progress} max={100} />
+        <Progress
+          value={progress}
+          max={100}
+          role="progressbar"
+          aria-valuenow={Math.round(progress)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`Assessment progress: ${currentIndex + (currentResponse ? 1 : 0)} of ${totalQuestions} questions answered`}
+        />
       </div>
+
+      {/* Demo mode notice */}
+      {isDemo && (
+        <Alert variant="warning">
+          <AlertTitle>Offline Mode</AlertTitle>
+          <AlertDescription>
+            The backend is not available. Your responses will be scored locally and will not be saved to the server.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Crisis Alert */}
       {showCrisis && (
@@ -185,15 +205,17 @@ export default function AssessPage() {
           )}
         </CardHeader>
         <CardContent>
-          <div className="space-y-2">
+          <div className="space-y-2" role="radiogroup" aria-label={currentQuestion.text}>
             {currentQuestion.options.map((option) => (
               <button
                 key={option.value}
                 onClick={() => handleSelectOption(option.value, option.label)}
+                role="radio"
+                aria-checked={currentResponse?.value === option.value}
                 className={`w-full text-left p-4 rounded-lg border transition-colors ${
                   currentResponse?.value === option.value
                     ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-                    : 'border-border hover:bg-accent'
+                    : 'border-border hover:bg-accent focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none'
                 }`}
               >
                 <span className="text-sm">{option.label}</span>
