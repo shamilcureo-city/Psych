@@ -106,7 +106,7 @@ model CrisisEvent {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  voiceSession   VoiceSession? @relation(fields: [voiceSessionId], references: [id])
+  voiceSession   VoiceSession? @relation(fields: [voiceSessionId], references: [id], onDelete: Cascade)
 
   @@index([clientId])
   @@index([severity])

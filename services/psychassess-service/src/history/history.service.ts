@@ -7,7 +7,7 @@ export class HistoryService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getScoreTimeline(clientId: string, toolType?: string) {
-    const where: any = { clientId };
+    const where: { clientId: string; toolType?: string } = { clientId };
     if (toolType) where.toolType = toolType;
 
     return this.prisma.clientScoreHistory.findMany({
@@ -18,17 +18,17 @@ export class HistoryService {
 
   async getLatestScores(clientId: string) {
     const toolTypes = Object.values(AssessmentToolType);
-    const results: any[] = [];
 
-    for (const toolType of toolTypes) {
-      const latest = await this.prisma.clientScoreHistory.findFirst({
-        where: { clientId, toolType },
-        orderBy: { assessedAt: 'desc' },
-      });
-      if (latest) results.push(latest);
-    }
+    const results = await Promise.all(
+      toolTypes.map((toolType) =>
+        this.prisma.clientScoreHistory.findFirst({
+          where: { clientId, toolType },
+          orderBy: { assessedAt: 'desc' },
+        }),
+      ),
+    );
 
-    return results;
+    return results.filter(Boolean);
   }
 
   async getClientSummary(clientId: string) {

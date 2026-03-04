@@ -18,14 +18,18 @@ export class Dass21Scorer implements AssessmentScorer {
 
     for (const subscale of def.subscales!) {
       const rawScore = subscale.questionIds.reduce(
-        (sum, qId) => sum + (responses[qId] ?? 0),
+        (sum: number, qId: string) => sum + (responses[qId] ?? 0),
         0,
       );
       const multipliedScore = rawScore * (subscale.multiplier ?? 1);
 
       const threshold = subscale.severityThresholds.find(
-        (t) => multipliedScore >= t.min && multipliedScore <= t.max,
-      )!;
+        (t: { min: number; max: number }) => multipliedScore >= t.min && multipliedScore <= t.max,
+      );
+
+      if (!threshold) {
+        throw new Error(`No severity threshold found for DASS-21 ${subscale.name} score: ${multipliedScore}`);
+      }
 
       subscaleScores[subscale.name.toLowerCase()] = {
         score: multipliedScore,

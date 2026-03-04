@@ -14,14 +14,18 @@ export class Who5Scorer implements AssessmentScorer {
 
     // Raw score 0-25, multiply by 4 for percentage scale 0-100
     const rawScore = def.questions.reduce(
-      (sum, q) => sum + (responses[q.id] ?? 0),
+      (sum: number, q: { id: string }) => sum + (responses[q.id] ?? 0),
       0,
     );
     const totalScore = rawScore * 4;
 
     const threshold = def.severityThresholds.find(
-      (t) => totalScore >= t.min && totalScore <= t.max,
-    )!;
+      (t: { min: number; max: number }) => totalScore >= t.min && totalScore <= t.max,
+    );
+
+    if (!threshold) {
+      throw new Error(`No severity threshold found for WHO-5 score: ${totalScore}`);
+    }
 
     let riskLevel = RiskLevel.NONE;
     if (totalScore <= 28) riskLevel = RiskLevel.MODERATE;

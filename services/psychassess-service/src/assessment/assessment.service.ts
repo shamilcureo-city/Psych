@@ -64,7 +64,11 @@ export class AssessmentService {
     }
 
     const toolDef = ASSESSMENT_TOOLS[session.toolType as AssessmentToolType];
-    const question = toolDef?.questions.find((q) => q.id === dto.questionId);
+    if (!toolDef) {
+      throw new BadRequestException(`Unknown assessment tool: ${session.toolType}`);
+    }
+
+    const question = toolDef.questions.find((q: { id: string }) => q.id === dto.questionId);
 
     if (!question) {
       throw new BadRequestException(`Unknown question: ${dto.questionId}`);
@@ -102,7 +106,7 @@ export class AssessmentService {
           await this.crisisService.flagCrisis({
             clientId: session.clientId,
             sessionId,
-            flagType: 'PHQ9_Q9',
+            flagType: `${session.toolType}_${crisisItem.questionId}`,
             severity: 'CRISIS',
             description: `${crisisItem.questionId} scored ${dto.responseValue} (threshold: ${crisisItem.threshold})`,
           });
@@ -215,7 +219,7 @@ export class AssessmentService {
   }
 
   async getClientHistory(clientId: string, toolType?: AssessmentToolType) {
-    const where: any = { clientId };
+    const where: { clientId: string; toolType?: string } = { clientId };
     if (toolType) where.toolType = toolType;
 
     const history = await this.prisma.clientScoreHistory.findMany({

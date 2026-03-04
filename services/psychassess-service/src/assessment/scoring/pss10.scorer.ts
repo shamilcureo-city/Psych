@@ -16,13 +16,17 @@ export class Pss10Scorer implements AssessmentScorer {
     // The reverse scoring is already baked into the response options
     // (PSS_REVERSE_OPTIONS has reversed values), so we just sum directly
     const totalScore = def.questions.reduce(
-      (sum, q) => sum + (responses[q.id] ?? 0),
+      (sum: number, q: { id: string }) => sum + (responses[q.id] ?? 0),
       0,
     );
 
     const threshold = def.severityThresholds.find(
-      (t) => totalScore >= t.min && totalScore <= t.max,
-    )!;
+      (t: { min: number; max: number }) => totalScore >= t.min && totalScore <= t.max,
+    );
+
+    if (!threshold) {
+      throw new Error(`No severity threshold found for PSS-10 score: ${totalScore}`);
+    }
 
     let riskLevel = RiskLevel.NONE;
     if (totalScore >= 27) riskLevel = RiskLevel.MODERATE;

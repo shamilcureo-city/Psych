@@ -5,9 +5,9 @@ import { AssessmentToolType } from '@psychassess/shared';
 export class StartAssessmentDto {
   @ApiProperty({ description: 'Client ID from client-management service' })
   @IsString()
-  clientId: string;
+  clientId!: string;
 
   @ApiProperty({ enum: AssessmentToolType, description: 'Assessment tool type' })
   @IsEnum(AssessmentToolType)
-  toolType: AssessmentToolType;
+  toolType!: AssessmentToolType;
 }

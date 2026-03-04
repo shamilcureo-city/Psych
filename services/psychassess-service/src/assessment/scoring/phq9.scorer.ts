@@ -13,13 +13,17 @@ export class Phq9Scorer implements AssessmentScorer {
   score(responses: ResponseMap): ScoredResult {
     const def = PHQ9_DEFINITION;
     const totalScore = def.questions.reduce(
-      (sum, q) => sum + (responses[q.id] ?? 0),
+      (sum: number, q: { id: string }) => sum + (responses[q.id] ?? 0),
       0,
     );
 
     const threshold = def.severityThresholds.find(
-      (t) => totalScore >= t.min && totalScore <= t.max,
-    )!;
+      (t: { min: number; max: number }) => totalScore >= t.min && totalScore <= t.max,
+    );
+
+    if (!threshold) {
+      throw new Error(`No severity threshold found for PHQ-9 score: ${totalScore}`);
+    }
 
     // Crisis check: PHQ-9 Q9 (suicidal ideation)
     const q9Score = responses[CRISIS_THRESHOLDS.PHQ9_Q9_QUESTION_ID] ?? 0;

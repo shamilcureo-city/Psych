@@ -12,13 +12,17 @@ export class Gad7Scorer implements AssessmentScorer {
   score(responses: ResponseMap): ScoredResult {
     const def = GAD7_DEFINITION;
     const totalScore = def.questions.reduce(
-      (sum, q) => sum + (responses[q.id] ?? 0),
+      (sum: number, q: { id: string }) => sum + (responses[q.id] ?? 0),
       0,
     );
 
     const threshold = def.severityThresholds.find(
-      (t) => totalScore >= t.min && totalScore <= t.max,
-    )!;
+      (t: { min: number; max: number }) => totalScore >= t.min && totalScore <= t.max,
+    );
+
+    if (!threshold) {
+      throw new Error(`No severity threshold found for GAD-7 score: ${totalScore}`);
+    }
 
     let riskLevel = RiskLevel.NONE;
     if (totalScore >= 15) riskLevel = RiskLevel.HIGH;
