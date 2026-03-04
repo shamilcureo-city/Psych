@@ -40,6 +40,9 @@ coverage/
 # Turbo
 .turbo/
 
+# TypeScript
+*.tsbuildinfo
+
 # Docker volumes
 postgres-data/
 redis-data/
