@@ -31,6 +31,27 @@ services:
       timeout: 5s
       retries: 5
 
+  psychassess-service:
+    build:
+      context: .
+      dockerfile: services/psychassess-service/Dockerfile
+    container_name: psychassess-service
+    ports:
+      - '3029:3029'
+    environment:
+      DATABASE_URL: postgresql://psychassess:psychassess_dev@postgres:5432/psychassess?schema=public
+      PORT: 3029
+      NODE_ENV: production
+      CORS_ORIGIN: http://localhost:3004
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: change-me-in-production
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   postgres-data:
   redis-data:

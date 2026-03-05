@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CRISIS_RESOURCES_INDIA } from '@psychassess/shared';
+import { CrisisPublisherService } from './crisis-publisher.service';
 
 export interface FlagCrisisDto {
   clientId: string;
@@ -15,7 +16,10 @@ export interface FlagCrisisDto {
 export class CrisisService {
   private readonly logger = new Logger(CrisisService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly publisher: CrisisPublisherService,
+  ) {}
 
   async flagCrisis(dto: FlagCrisisDto) {
     this.logger.warn(
@@ -33,9 +37,16 @@ export class CrisisService {
       },
     });
 
-    // In production, this would publish to Kafka topic: psychassess_crisis_flag
-    // and trigger notification-management + communication-service alerts.
-    // For Phase 1 MVP, we log and store the event.
+    // Publish crisis event for downstream consumers (Kafka in production)
+    await this.publisher.publish({
+      crisisEventId: event.id,
+      clientId: dto.clientId,
+      sessionId: dto.sessionId,
+      flagType: dto.flagType,
+      severity: dto.severity,
+      description: dto.description,
+      timestamp: new Date().toISOString(),
+    });
 
     return {
       crisisEventId: event.id,

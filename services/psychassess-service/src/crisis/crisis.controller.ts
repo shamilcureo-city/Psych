@@ -2,12 +2,14 @@ import { Controller, Get, Param, Post, Body } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiParam } from '@nestjs/swagger';
 import { CrisisService } from './crisis.service';
 import { ResolveCrisisDto } from './dto/resolve-crisis.dto';
+import { Public } from '../common/guards/auth.guard';
 
 @ApiTags('crisis')
 @Controller('crisis')
 export class CrisisController {
   constructor(private readonly crisisService: CrisisService) {}
 
+  @Public()
   @Get('resources')
   @ApiOperation({ summary: 'Get crisis helpline resources' })
   getResources() {
