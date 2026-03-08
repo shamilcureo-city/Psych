@@ -17,7 +17,18 @@ import {
   ScoredResult,
   SeverityBand,
 } from '@psychassess/shared';
-import { getResult, type AssessmentResultResponse } from '@/lib/api';
+import { getResult } from '@/lib/api';
+import {
+  ArrowRight,
+  Download,
+  Share2,
+  TrendingUp,
+  Phone,
+  Lock,
+  Sparkles,
+  BarChart3,
+  Calendar,
+} from 'lucide-react';
 
 // Client-side scoring for demo mode using actual clinical thresholds
 function scoreLocally(
@@ -99,12 +110,10 @@ function scoreLocally(
 
   // Determine risk from score if no crisis
   if (riskLevel === RiskLevel.NONE) {
-    // WHO-5: lower is worse (inverted)
     if (toolType === AssessmentToolType.WHO5) {
       if (totalScore <= 28) riskLevel = RiskLevel.MODERATE;
       else if (totalScore < 52) riskLevel = RiskLevel.LOW;
     } else {
-      // Standard tools: higher is worse
       const ratio = totalScore / tool.scoreRange.max;
       if (ratio >= 0.75) riskLevel = RiskLevel.HIGH;
       else if (ratio >= 0.5) riskLevel = RiskLevel.MODERATE;
@@ -195,18 +204,21 @@ export default function ResultsPage() {
     <div className="max-w-2xl mx-auto space-y-6">
       {/* Crisis Alert — always on top */}
       {result.crisisFlags && result.crisisFlags.length > 0 && (
-        <Alert variant="destructive">
-          <AlertTitle>Important — Support Is Available</AlertTitle>
-          <AlertDescription className="space-y-2">
+        <Alert variant="destructive" className="border-red-300 bg-red-50">
+          <AlertTitle className="text-red-900 flex items-center gap-2">
+            <Phone className="h-4 w-4" />
+            Important — Support Is Available
+          </AlertTitle>
+          <AlertDescription className="space-y-3 text-red-800">
             <p>
               Your responses indicate you may be experiencing significant distress.
               Please reach out to one of these resources — they are here to help.
             </p>
-            <div className="space-y-1">
+            <div className="space-y-1.5 rounded-lg bg-white/60 p-3">
               {CRISIS_RESOURCES_INDIA.map((resource) => (
                 <p key={resource.name} className="text-sm">
                   <strong>{resource.name}:</strong>{' '}
-                  <a href={`tel:${resource.phone}`} className="underline">
+                  <a href={`tel:${resource.phone}`} className="underline font-semibold">
                     {resource.phone}
                   </a>{' '}
                   ({resource.availability})
@@ -218,29 +230,35 @@ export default function ResultsPage() {
       )}
 
       {/* Score Summary Card */}
-      <Card>
+      <Card className="overflow-hidden">
+        <div
+          className="h-2"
+          style={{ backgroundColor: getSeverityColor(result.severityBand) }}
+        />
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>{tool?.name || result.toolType} Results</CardTitle>
+              <CardTitle className="text-xl">{tool?.name || result.toolType} Results</CardTitle>
               <CardDescription>{tool?.fullName}</CardDescription>
             </div>
-            <div
-              className="text-3xl font-bold"
-              style={{ color: getSeverityColor(result.severityBand) }}
-            >
-              {result.totalScore}
-              <span className="text-sm font-normal text-muted-foreground">
-                /{result.maxPossibleScore}
+            <div className="text-right">
+              <div
+                className="text-4xl font-bold"
+                style={{ color: getSeverityColor(result.severityBand) }}
+              >
+                {result.totalScore}
+              </div>
+              <span className="text-sm text-muted-foreground">
+                out of {result.maxPossibleScore}
               </span>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Severity Badge */}
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">Severity:</span>
+          {/* Severity & Risk badges */}
+          <div className="flex flex-wrap gap-2">
             <Badge
+              className="text-sm px-3 py-1"
               style={{
                 backgroundColor: getSeverityColor(result.severityBand) + '20',
                 color: getSeverityColor(result.severityBand),
@@ -250,12 +268,8 @@ export default function ResultsPage() {
             >
               {result.severityLabel}
             </Badge>
-          </div>
-
-          {/* Risk Level */}
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">Risk Level:</span>
             <Badge
+              className="text-sm px-3 py-1"
               style={{
                 backgroundColor: getRiskColor(result.riskLevel) + '20',
                 color: getRiskColor(result.riskLevel),
@@ -263,7 +277,7 @@ export default function ResultsPage() {
               }}
               variant="outline"
             >
-              {result.riskLevel}
+              Risk: {result.riskLevel}
             </Badge>
           </div>
 
@@ -274,7 +288,7 @@ export default function ResultsPage() {
               <span>{result.maxPossibleScore}</span>
             </div>
             <div
-              className="h-4 bg-secondary rounded-full overflow-hidden"
+              className="h-3 bg-secondary rounded-full overflow-hidden"
               role="progressbar"
               aria-valuenow={result.totalScore}
               aria-valuemin={0}
@@ -282,7 +296,7 @@ export default function ResultsPage() {
               aria-label={`Score: ${result.totalScore} out of ${result.maxPossibleScore}`}
             >
               <div
-                className="h-full rounded-full transition-all"
+                className="h-full rounded-full transition-all duration-1000"
                 style={{
                   width: `${scorePercentage}%`,
                   backgroundColor: getSeverityColor(result.severityBand),
@@ -328,9 +342,9 @@ export default function ResultsPage() {
             {result.plainLanguageInterpretation}
           </p>
 
-          <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-            <h4 className="text-sm font-medium">Recommendation</h4>
-            <p className="text-sm text-muted-foreground">{result.recommendation}</p>
+          <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 space-y-2">
+            <h4 className="text-sm font-medium text-blue-900">Recommendation</h4>
+            <p className="text-sm text-blue-800">{result.recommendation}</p>
           </div>
 
           <details className="text-sm">
@@ -346,11 +360,14 @@ export default function ResultsPage() {
 
       {/* Adaptive Suggestions */}
       {result.adaptiveSuggestions && result.adaptiveSuggestions.length > 0 && (
-        <Card className="border-blue-200 bg-blue-50">
+        <Card className="border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50">
           <CardHeader>
-            <CardTitle className="text-lg">Recommended Follow-up</CardTitle>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-blue-600" />
+              Recommended Follow-up
+            </CardTitle>
             <CardDescription>
-              Based on your responses, we recommend the following additional assessments.
+              Based on your responses, we recommend these additional assessments.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -364,7 +381,10 @@ export default function ResultsPage() {
                       <p className="text-xs text-muted-foreground">{suggested?.description}</p>
                     </div>
                     <Link href={`/psych/assess/${suggestedTool}`}>
-                      <Button size="sm">Start</Button>
+                      <Button size="sm">
+                        Start
+                        <ArrowRight className="ml-1 h-3 w-3" />
+                      </Button>
                     </Link>
                   </div>
                 );
@@ -373,6 +393,41 @@ export default function ResultsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Upgrade Prompt */}
+      <Card className="border-indigo-200 bg-gradient-to-br from-indigo-50 via-blue-50 to-purple-50">
+        <CardContent className="pt-6">
+          <div className="text-center space-y-3">
+            <h3 className="font-semibold text-foreground">Get More from Your Results</h3>
+            <p className="text-sm text-muted-foreground">
+              Upgrade to track your scores over time, export PDF reports for your therapist, and get reassessment reminders.
+            </p>
+            <div className="flex flex-wrap justify-center gap-4 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <Download className="h-3.5 w-3.5 text-blue-600" />
+                PDF Reports
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Share2 className="h-3.5 w-3.5 text-blue-600" />
+                Share with Therapist
+              </span>
+              <span className="flex items-center gap-1.5">
+                <BarChart3 className="h-3.5 w-3.5 text-blue-600" />
+                Trend Analysis
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5 text-blue-600" />
+                Reassessment Reminders
+              </span>
+            </div>
+            <Button className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700">
+              <Lock className="mr-2 h-4 w-4" />
+              Upgrade to Wellness — &#8377;299/mo
+            </Button>
+            <p className="text-xs text-muted-foreground">7-day free trial. Cancel anytime.</p>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Non-diagnostic disclaimer */}
       <Alert variant="info">
@@ -383,12 +438,15 @@ export default function ResultsPage() {
       </Alert>
 
       {/* Actions */}
-      <div className="flex gap-3 justify-center">
+      <div className="flex gap-3 justify-center pb-4">
         <Link href="/psych">
           <Button variant="outline">Take Another Assessment</Button>
         </Link>
         <Link href="/psych/dashboard">
-          <Button>View Dashboard</Button>
+          <Button>
+            <TrendingUp className="mr-2 h-4 w-4" />
+            View Dashboard
+          </Button>
         </Link>
       </div>
     </div>

@@ -133,14 +133,25 @@ export default function HistoryPage() {
           })}
         </div>
       ) : !error ? (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center py-8">
-              <p className="text-muted-foreground mb-4">
-                No assessment sessions yet. Start your first assessment to see your history here.
-              </p>
+        <Card className="border-dashed border-2">
+          <CardContent className="pt-8 pb-8">
+            <div className="text-center space-y-4">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50">
+                <svg className="h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">No Sessions Yet</h3>
+                <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+                  Your completed assessments will appear here with scores, dates, and severity bands.
+                  Start building your mental health history today.
+                </p>
+              </div>
               <Link href="/psych">
-                <Button>Start an Assessment</Button>
+                <Button className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700">
+                  Start Your First Assessment
+                </Button>
               </Link>
             </div>
           </CardContent>

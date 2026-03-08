@@ -13,6 +13,7 @@ import {
   type ScoreHistoryEntry,
   type MoodLogEntry,
 } from '@/lib/api';
+import Link from 'next/link';
 import { AssessmentToolType, ASSESSMENT_TOOLS } from '@psychassess/shared';
 import {
   LineChart,
@@ -317,13 +318,30 @@ export default function DashboardPage() {
 
       {/* No data state */}
       {!summary && timeline.length === 0 && !error && (
-        <Alert variant="info">
-          <AlertTitle>No Data Yet</AlertTitle>
-          <AlertDescription>
-            Complete your first assessment to start tracking your mental health over time.
-            Your scores will appear here as a longitudinal trend.
-          </AlertDescription>
-        </Alert>
+        <Card className="border-dashed border-2">
+          <CardContent className="pt-8 pb-8">
+            <div className="text-center space-y-4">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50">
+                <svg className="h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Your Dashboard Awaits</h3>
+                <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+                  Complete your first assessment to unlock trend charts, score tracking, and personalized insights.
+                  Your mental health journey starts with a single screen.
+                </p>
+              </div>
+              <Link href="/psych">
+                <Button className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700">
+                  Take Your First Assessment
+                </Button>
+              </Link>
+              <p className="text-xs text-muted-foreground">Takes less than 5 minutes</p>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

@@ -14,7 +14,13 @@ export default function ConsentPage() {
   const handleAccept = () => {
     localStorage.setItem('psychassess_consent', 'true');
     localStorage.setItem('psychassess_consent_date', new Date().toISOString());
-    router.push('/psych');
+    // Check if intake already completed, skip to hub if so
+    const intake = localStorage.getItem('psychassess_intake');
+    if (intake) {
+      router.push('/psych');
+    } else {
+      router.push('/psych/intake');
+    }
   };
 
   return (
