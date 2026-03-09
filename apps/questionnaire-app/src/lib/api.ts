@@ -2,6 +2,7 @@ import {
   AssessmentToolType,
   ScoredResult,
 } from '@psychassess/shared';
+import { getAuthToken } from './auth';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3029';
 
@@ -9,6 +10,12 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { ...options?.headers as Record<string, string> };
   if (options?.body) {
     headers['Content-Type'] = 'application/json';
+  }
+
+  // Attach auth token if available
+  const token = getAuthToken();
+  if (token && !headers['Authorization']) {
+    headers['Authorization'] = `Bearer ${token}`;
   }
 
   const res = await fetch(`${API_BASE}${path}`, {

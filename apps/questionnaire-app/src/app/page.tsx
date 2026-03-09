@@ -212,10 +212,16 @@ export default function Home() {
               How It Works
             </a>
             <Link
-              href="/psych"
+              href="/auth/login"
+              className="hidden text-sm font-medium text-muted-foreground transition-colors hover:text-foreground sm:block"
+            >
+              Sign In
+            </Link>
+            <Link
+              href="/auth/register"
               className="rounded-full bg-foreground px-5 py-2 text-sm font-medium text-background transition-all hover:bg-foreground/90 hover:shadow-lg"
             >
-              Get Started
+              Get Started Free
             </Link>
           </div>
         </div>

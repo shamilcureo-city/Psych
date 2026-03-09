@@ -1,0 +1,200 @@
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { ASSESSMENT_TOOLS, AssessmentToolType } from '@psychassess/shared';
+
+@Injectable()
+export class PdfService {
+  private readonly logger = new Logger(PdfService.name);
+
+  constructor(private readonly prisma: PrismaService) {}
+
+  async generateReport(resultId: string, userId: string): Promise<Buffer> {
+    const result = await this.prisma.assessmentResult.findFirst({
+      where: { id: resultId, userId },
+      include: { session: true },
+    });
+
+    if (!result) {
+      throw new NotFoundException('Result not found');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const tool = ASSESSMENT_TOOLS[result.toolType as AssessmentToolType];
+
+    // Dynamic import of pdfkit
+    const PDFDocument = (await import('pdfkit')).default;
+
+    return new Promise((resolve, reject) => {
+      const doc = new PDFDocument({
+        size: 'A4',
+        margins: { top: 50, bottom: 50, left: 50, right: 50 },
+      });
+
+      const chunks: Buffer[] = [];
+      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      // ─── Header ───────────────────────────────
+      doc
+        .fontSize(24)
+        .fillColor('#4f46e5')
+        .text('PsychAssess', { align: 'center' })
+        .moveDown(0.3);
+
+      doc
+        .fontSize(10)
+        .fillColor('#6b7280')
+        .text('Clinical Assessment Report', { align: 'center' })
+        .moveDown(1.5);
+
+      // ─── Assessment Info ──────────────────────
+      doc
+        .fontSize(18)
+        .fillColor('#1f2937')
+        .text(`${tool?.name || result.toolType} — ${tool?.fullName || 'Assessment Results'}`)
+        .moveDown(0.5);
+
+      doc
+        .fontSize(10)
+        .fillColor('#6b7280')
+        .text(`Patient: ${user?.name || 'Anonymous'}`)
+        .text(`Date: ${result.createdAt.toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' })}`)
+        .text(`Domain: ${tool?.domain || 'N/A'}`)
+        .text(`Reference: ${tool?.reference || 'N/A'}`)
+        .moveDown(1);
+
+      // ─── Score Section ────────────────────────
+      doc
+        .rect(50, doc.y, 495, 80)
+        .fillAndStroke('#f3f4f6', '#e5e7eb');
+
+      const scoreY = doc.y + 15;
+      doc
+        .fontSize(36)
+        .fillColor(this.getSeverityHexColor(result.severityBand))
+        .text(`${result.totalScore}`, 70, scoreY, { continued: true })
+        .fontSize(14)
+        .fillColor('#6b7280')
+        .text(` / ${result.maxPossibleScore}`, { continued: false });
+
+      doc
+        .fontSize(12)
+        .fillColor(this.getSeverityHexColor(result.severityBand))
+        .text(result.severityLabel, 300, scoreY)
+        .fontSize(10)
+        .fillColor('#6b7280')
+        .text(`Risk Level: ${result.riskLevel}`, 300, scoreY + 20);
+
+      doc.y = scoreY + 65;
+      doc.moveDown(1);
+
+      // ─── Subscale Scores (DASS-21) ────────────
+      if (result.subscaleScores) {
+        doc
+          .fontSize(14)
+          .fillColor('#1f2937')
+          .text('Subscale Scores')
+          .moveDown(0.5);
+
+        const subscales = result.subscaleScores as Record<string, { score: number; label: string }>;
+        for (const [name, data] of Object.entries(subscales)) {
+          doc
+            .fontSize(10)
+            .fillColor('#1f2937')
+            .text(`${name.charAt(0).toUpperCase() + name.slice(1)}: ${data.score} — ${data.label}`);
+        }
+        doc.moveDown(1);
+      }
+
+      // ─── Clinical Interpretation ──────────────
+      doc
+        .fontSize(14)
+        .fillColor('#1f2937')
+        .text('Clinical Interpretation')
+        .moveDown(0.3);
+
+      doc
+        .fontSize(10)
+        .fillColor('#4b5563')
+        .text(result.clinicalInterpretation, { lineGap: 3 })
+        .moveDown(1);
+
+      // ─── Recommendation ───────────────────────
+      doc
+        .fontSize(14)
+        .fillColor('#1f2937')
+        .text('Recommendation')
+        .moveDown(0.3);
+
+      doc
+        .fontSize(10)
+        .fillColor('#4b5563')
+        .text(result.recommendation, { lineGap: 3 })
+        .moveDown(1);
+
+      // ─── Plain Language ───────────────────────
+      if (result.plainLanguageInterpretation && result.plainLanguageInterpretation !== result.clinicalInterpretation) {
+        doc
+          .fontSize(14)
+          .fillColor('#1f2937')
+          .text('Summary')
+          .moveDown(0.3);
+
+        doc
+          .fontSize(10)
+          .fillColor('#4b5563')
+          .text(result.plainLanguageInterpretation, { lineGap: 3 })
+          .moveDown(1);
+      }
+
+      // ─── Disclaimer ──────────────────────────
+      doc.moveDown(2);
+      doc
+        .rect(50, doc.y, 495, 60)
+        .fillAndStroke('#fef3c7', '#fbbf24');
+
+      doc
+        .fontSize(8)
+        .fillColor('#92400e')
+        .text(
+          'DISCLAIMER: This report is generated by PsychAssess, a screening tool. It does NOT constitute a clinical diagnosis. ' +
+          'Results are intended to support — not replace — qualified mental health professionals. ' +
+          'If you are in crisis, please contact a mental health professional or crisis helpline immediately.',
+          60, doc.y + 10,
+          { width: 475, lineGap: 2 },
+        );
+
+      // ─── Footer ───────────────────────────────
+      doc
+        .fontSize(8)
+        .fillColor('#9ca3af')
+        .text(
+          `Generated by PsychAssess (Cureocity) on ${new Date().toISOString()} | Report ID: ${result.id}`,
+          50, 780,
+          { align: 'center' },
+        );
+
+      doc.end();
+    });
+  }
+
+  private getSeverityHexColor(band: string): string {
+    const colors: Record<string, string> = {
+      NORMAL: '#22c55e',
+      MINIMAL: '#22c55e',
+      NEGATIVE_SCREEN: '#22c55e',
+      LOW: '#84cc16',
+      MILD: '#eab308',
+      SUBTHRESHOLD: '#eab308',
+      MODERATE: '#f97316',
+      MODERATELY_SEVERE: '#ef4444',
+      POSITIVE_SCREEN: '#f97316',
+      HIGH: '#ef4444',
+      SEVERE: '#dc2626',
+      EXTREMELY_SEVERE: '#991b1b',
+      POOR: '#dc2626',
+    };
+    return colors[band] || '#6b7280';
+  }
+}

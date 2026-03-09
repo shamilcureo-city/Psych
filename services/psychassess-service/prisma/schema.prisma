@@ -7,27 +7,98 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─── Assessment Session ────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+//  USER & AUTH
+// ═══════════════════════════════════════════════════════════════
+
+model User {
+  id             String    @id @default(uuid())
+  email          String    @unique
+  name           String?
+  passwordHash   String?   // null for OAuth-only users
+  googleId       String?   @unique
+  avatarUrl      String?
+  role           String    @default("USER") // USER, THERAPIST, ADMIN
+  emailVerified  Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  subscription   Subscription?
+  sessions       AssessmentSession[]
+  results        AssessmentResult[]
+  moodLogs       MoodLog[]
+  scoreHistory   ClientScoreHistory[]
+  crisisEvents   CrisisEvent[]
+  journalEntries JournalEntry[]
+  shareLinks     ShareLink[]
+
+  @@index([email])
+  @@index([googleId])
+}
+
+model Subscription {
+  id                 String    @id @default(uuid())
+  userId             String    @unique
+  plan               String    @default("FREE") // FREE, WELLNESS, CLINICAL
+  status             String    @default("ACTIVE") // ACTIVE, CANCELLED, PAST_DUE, TRIALING
+  razorpayCustomerId String?
+  razorpaySubId      String?   @unique
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  trialEndsAt        DateTime?
+  cancelledAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([razorpaySubId])
+  @@index([status])
+}
+
+model ShareLink {
+  id         String    @id @default(uuid())
+  userId     String
+  resultId   String
+  token      String    @unique @default(uuid())
+  expiresAt  DateTime?
+  viewCount  Int       @default(0)
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+
+  user   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  result AssessmentResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  ASSESSMENT
+// ═══════════════════════════════════════════════════════════════
+
 model AssessmentSession {
   id            String              @id @default(uuid())
   clientId      String
-  toolType      String              // PHQ9, GAD7, DASS21, etc.
-  status        String              @default("IN_PROGRESS") // NOT_STARTED, IN_PROGRESS, COMPLETED, ABANDONED
-  adaptivePath  String[]            @default([]) // Ordered list of tool types in adaptive flow
+  userId        String?
+  toolType      String
+  status        String              @default("IN_PROGRESS")
+  adaptivePath  String[]            @default([])
   startedAt     DateTime            @default(now())
   completedAt   DateTime?
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
 
-  responses     AssessmentResponse[]
-  result        AssessmentResult?
+  user      User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  responses AssessmentResponse[]
+  result    AssessmentResult?
 
   @@index([clientId])
+  @@index([userId])
   @@index([clientId, toolType])
   @@index([status])
 }
 
-// ─── Assessment Response (individual question answer) ──────────
 model AssessmentResponse {
   id            String   @id @default(uuid())
   sessionId     String
@@ -44,43 +115,49 @@ model AssessmentResponse {
   @@index([sessionId])
 }
 
-// ─── Assessment Result (scored output) ─────────────────────────
 model AssessmentResult {
   id                         String   @id @default(uuid())
   sessionId                  String   @unique
   clientId                   String
+  userId                     String?
   toolType                   String
   totalScore                 Int
   maxPossibleScore           Int
-  subscaleScores             Json?    // { depression: { score: 14, band: "MODERATE" }, ... }
+  subscaleScores             Json?
   severityBand               String
   severityLabel              String
   clinicalInterpretation     String
   plainLanguageInterpretation String
   recommendation             String
-  riskLevel                  String   @default("NONE") // NONE, LOW, MODERATE, HIGH, CRISIS
-  crisisFlags                Json?    // [{ questionId, score, action }]
+  riskLevel                  String   @default("NONE")
+  crisisFlags                Json?
   adaptiveSuggestions        String[] @default([])
   createdAt                  DateTime @default(now())
 
-  session  AssessmentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session    AssessmentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user       User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  shareLinks ShareLink[]
 
   @@index([clientId])
+  @@index([userId])
   @@index([clientId, toolType])
   @@index([riskLevel])
 }
 
-// ─── Voice Counseling Session ──────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+//  VOICE / CRISIS / MOOD / JOURNAL / HISTORY
+// ═══════════════════════════════════════════════════════════════
+
 model VoiceSession {
   id             String        @id @default(uuid())
   clientId       String
-  sessionType    String        // PSYCHOEDUCATION, CBT_CHECKIN, etc.
-  framework      String        // CBT, ACT, MBSR, etc.
+  sessionType    String
+  framework      String
   startedAt      DateTime      @default(now())
   endedAt        DateTime?
   durationSec    Int?
-  transcriptRef  String?       // S3 key
-  notesRef       String?       // S3 key
+  transcriptRef  String?
+  notesRef       String?
   crisisFlag     Boolean       @default(false)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
@@ -90,62 +167,70 @@ model VoiceSession {
   @@index([clientId])
 }
 
-// ─── Crisis Event ──────────────────────────────────────────────
 model CrisisEvent {
   id             String    @id @default(uuid())
   clientId       String
-  sessionId      String?   // Can be from assessment or voice session
+  userId         String?
+  sessionId      String?
   voiceSessionId String?
-  flagType       String    // PHQ9_Q9, VERBAL_DISTRESS, SELF_HARM_KEYWORD, CLINICIAN_FLAGGED
-  severity       String    // LOW, MODERATE, HIGH, CRISIS
+  flagType       String
+  severity       String
   description    String?
   triggeredAt    DateTime  @default(now())
   resolvedAt     DateTime?
   resolvedBy     String?
-  safetyPlanRef  String?   // S3 key
+  safetyPlanRef  String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  voiceSession   VoiceSession? @relation(fields: [voiceSessionId], references: [id], onDelete: Cascade)
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  voiceSession VoiceSession? @relation(fields: [voiceSessionId], references: [id], onDelete: Cascade)
 
   @@index([clientId])
+  @@index([userId])
   @@index([severity])
   @@index([triggeredAt])
 }
 
-// ─── Mood Log ──────────────────────────────────────────────────
 model MoodLog {
   id        String   @id @default(uuid())
   clientId  String
+  userId    String?
   logDate   DateTime @default(now())
-  moodScore Int      // 1–5
+  moodScore Int
   note      String?
   tags      String[] @default([])
   createdAt DateTime @default(now())
 
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
   @@index([clientId])
+  @@index([userId])
   @@index([clientId, logDate])
 }
 
-// ─── Journal Entry ─────────────────────────────────────────────
 model JournalEntry {
   id         String   @id @default(uuid())
   clientId   String
+  userId     String?
   entryDate  DateTime @default(now())
-  content    String   // Encrypted at application level
+  content    String
   promptUsed String?
-  sentiment  String?  // AI-detected sentiment
+  sentiment  String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
   @@index([clientId])
+  @@index([userId])
   @@index([clientId, entryDate])
 }
 
-// ─── Client Score History (longitudinal tracking) ──────────────
 model ClientScoreHistory {
   id           String   @id @default(uuid())
   clientId     String
+  userId       String?
   toolType     String
   score        Int
   severityBand String
@@ -153,7 +238,10 @@ model ClientScoreHistory {
   sessionId    String?
   createdAt    DateTime @default(now())
 
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
   @@index([clientId])
+  @@index([userId])
   @@index([clientId, toolType])
   @@index([clientId, toolType, assessedAt])
 }
